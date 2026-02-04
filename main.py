@@ -1,56 +1,232 @@
+import streamlit as st
 import requests
-from fastapi import FastAPI, HTTPException
-from fastapi.staticfiles import StaticFiles
-from starlette.responses import FileResponse
-from geopy.geocoders import ArcGIS
+import pandas as pd
+from datetime import datetime, timedelta
+import numpy as np
 
-app = FastAPI()
+# 1. モニタリング拠点 (11箇所)
+LOCATIONS = {
+    "函館": {"lat": 41.76, "lon": 140.74, "type": "marine"},
+    "石巻": {"lat": 38.41, "lon": 141.32, "type": "marine"},
+    "福島相馬": {"lat": 37.83, "lon": 140.95, "type": "marine"},
+    "千葉勝浦": {"lat": 35.15, "lon": 140.32, "type": "marine"},
+    "富山魚津": {"lat": 36.83, "lon": 137.40, "type": "marine"},
+    "愛知蒲郡": {"lat": 34.82, "lon": 137.22, "type": "marine"},
+    "京都舞鶴": {"lat": 35.60, "lon": 135.30, "type": "marine"},
+    "香川多度津": {"lat": 34.27, "lon": 133.75, "type": "marine"},
+    "徳島": {"lat": 34.00, "lon": 134.70, "type": "marine"},
+    "福岡博多": {"lat": 33.60, "lon": 130.40, "type": "marine"},
+    "東京": {"lat": 35.66, "lon": 139.79, "type": "weather"},
+}
 
-# ジオコーディングサービスをArcGISに変更
-geolocator = ArcGIS(user_agent="tenki_app", timeout=10)
-
-@app.get("/api/weather")
-def get_weather(location: str):
-    """指定された地名の波の高さを取得する"""
-    if location == "銚子港":
-        lat = 35.74
-        lon = 140.85
-        resolved_location_name = "銚子港"
-    else:
-        try:
-            # 地名を緯度経度に変換
-            location_data = geolocator.geocode(location + ", 日本")
-            if location_data is None:
-                raise HTTPException(status_code=404, detail=f"「{location}」が見つかりませんでした。")
-
-            lat = location_data.latitude
-            lon = location_data.longitude
-            resolved_location_name = location_data.address
-
-        except Exception as e:
-            raise HTTPException(status_code=500, detail=f"ジオコーディング中にエラーが発生しました: {e}")
-
-    # Marine APIで有効なパラメータに修正
-    url = f"https://marine-api.open-meteo.com/v1/marine?latitude={lat}&longitude={lon}&hourly=wave_height,wave_direction,wave_period,sea_surface_temperature&timezone=Asia%2FTokyo"
-
+# API Call Functions
+def get_marine_data(lat, lon, days=3):
+    """Fetch marine data (wave_height, wind_speed) from Open-Meteo Marine API."""
+    end_date = (datetime.now() + timedelta(days=days)).strftime('%Y-%m-%d')
+    url = f"https://marine-api.open-meteo.com/v1/marine?latitude={lat}&longitude={lon}&hourly=wave_height,wind_speed_10m&forecast_days={days}&timezone=Asia%2FTokyo"
     try:
         response = requests.get(url)
-        response.raise_for_status()
-
-        # 取得したデータに、変換後の地名情報も追加して返す
-        weather_data = response.json()
-        weather_data['resolved_location'] = resolved_location_name
-        return weather_data
-
+        response.raise_for_status()  # Raise HTTPError for bad responses (4xx or 5xx)
+        return response.json()
+    except requests.exceptions.HTTPError as e:
+        st.error(f"海洋APIでのHTTPエラー: {e} (Status: {e.response.status_code})")
+        return None
+    except requests.exceptions.ConnectionError as e:
+        st.error(f"海洋APIへの接続エラー: {e}")
+        return None
+    except requests.exceptions.Timeout as e:
+        st.error(f"海洋APIへの接続タイムアウト: {e}")
+        return None
     except requests.exceptions.RequestException as e:
-        raise HTTPException(status_code=503, detail=f"気象情報サービスへの接続に失敗しました: {e}")
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"サーバー内部でエラーが発生しました: {e}")
+        st.error(f"海洋APIでの予期せぬエラー: {e}")
+        return None
 
-# 静的ファイルの配信
-app.mount("/static", StaticFiles(directory="static"), name="static")
+def get_weather_data(lat, lon, days=4): # Changed to 4 days to get yesterday's data relative to today
+    """Fetch weather data (temperature, precipitation, wind_speed, and daily aggregates) from Open-Meteo Forecast API."""
+    end_date = (datetime.now() + timedelta(days=days-1)).strftime('%Y-%m-%d') # Adjust end_date to reflect forecast_days
+    url = f"https://api.open-meteo.com/v1/forecast?latitude={lat}&longitude={lon}&hourly=temperature_2m,precipitation,wind_speed_10m&daily=temperature_2m_max,precipitation_sum,precipitation_probability_max&forecast_days={days}&timezone=Asia%2FTokyo"
+    try:
+        response = requests.get(url)
+        response.raise_for_status()  # Raise HTTPError for bad responses (4xx or 5xx)
+        return response.json()
+    except requests.exceptions.HTTPError as e:
+        st.error(f"天気APIでのHTTPエラー: {e} (Status: {e.response.status_code})")
+        return None
+    except requests.exceptions.ConnectionError as e:
+        st.error(f"天気APIへの接続エラー: {e}")
+        return None
+    except requests.exceptions.Timeout as e:
+        st.error(f"天気APIへの接続タイムアウト: {e}")
+        return None
+    except requests.exceptions.RequestException as e:
+        st.error(f"天気APIでの予期せぬエラー: {e}")
+        return None
 
-@app.get("/")
-async def read_index():
-    """トップページ (index.html) を返す"""
-    return FileResponse('static/index.html')
+def get_wave_status(wave_height):
+    """Determine wave status and color based on wave height."""
+    if wave_height >= 2.5:
+        return "時化", "red"
+    elif wave_height >= 1.5:
+        return "注意", "orange"
+    else:
+        return "凪", "blue"
+
+def is_spring_tide(date):
+    """
+    Determine if the given date is a spring tide (大潮).
+    This is a more accurate model based on astronomical approximation.
+    Source: https://mementomori.me/a/2012/05/26/javascript-moon-phase/ (Japanese reference for lunar phase calculation)
+    Adapted to Python.
+    """
+    # Number of days from 2000-01-06 (new moon) to the target date
+    diff = date - datetime(2000, 1, 6).date()
+    days_since_new_moon_ref = diff.days
+
+    # Synodic month (period from one new moon to the next)
+    SYNODIC_MONTH = 29.530588
+
+    # Current lunar phase in days from new moon
+    current_lunar_day = days_since_new_moon_ref % SYNODIC_MONTH
+
+    # Spring tides occur around New Moon (0 days) and Full Moon (SYNODIC_MONTH / 2)
+    # We consider +/- 3 days around these points as spring tide
+    if (0 <= current_lunar_day <= 3) or \
+       (SYNODIC_MONTH - 3 <= current_lunar_day < SYNODIC_MONTH) or \
+       (SYNODIC_MONTH/2 - 3 <= current_lunar_day <= SYNODIC_MONTH/2 + 3):
+        return "大潮"
+    return "小潮・中潮"
+    
+def get_tokyo_demand_prediction(tokyo_weather_data):
+    """
+    Generate demand prediction text for Tokyo based on temperature and precipitation probability.
+    Criteria:
+    - Temperature -3C or less than previous day, OR
+    - Precipitation probability >= 50%
+    Result: "来店リスクあり/鍋需要増"
+    """
+    if not tokyo_weather_data or 'daily' not in tokyo_weather_data:
+        return "東京の需要予測データがありません。"
+
+    daily_data = tokyo_weather_data['daily']
+    
+    # Dates are in ISO 8601 format (e.g., "2023-10-27")
+    today_str = datetime.now().strftime('%Y-%m-%d')
+    yesterday_str = (datetime.now() - timedelta(days=1)).strftime('%Y-%m-%d')
+
+    # Find today's and yesterday's data
+    today_index = -1
+    yesterday_index = -1
+    for i, date_str in enumerate(daily_data['time']):
+        if date_str == today_str:
+            today_index = i
+        if date_str == yesterday_str:
+            yesterday_index = i
+
+    recommendation = []
+
+    # 1. Temperature difference
+    if today_index != -1 and yesterday_index != -1:
+        temp_today_max = daily_data['temperature_2m_max'][today_index]
+        temp_yesterday_max = daily_data['temperature_2m_max'][yesterday_index]
+        if temp_today_max - temp_yesterday_max <= -3:
+            recommendation.append("気温が前日比-3℃以下")
+
+    # 2. Precipitation probability
+    if today_index != -1:
+        precip_prob_today = daily_data['precipitation_probability_max'][today_index]
+        if precip_prob_today >= 50:
+            recommendation.append(f"降水確率{precip_prob_today}%以上")
+
+    if recommendation:
+        return "来店リスクあり/鍋需要増 ({})".format("、".join(recommendation))
+    return "特になし"    
+
+# Streamlit UI
+
+st.set_page_config(layout="wide")
+st.title("🌊 UMI-MIRU: 水産お天気ダッシュボード 🐟")
+
+# Sidebar
+st.sidebar.header("設定")
+selected_location = st.sidebar.selectbox("拠点を選択", [loc for loc in LOCATIONS.keys() if LOCATIONS[loc]["type"] == "marine"])
+refresh_button = st.sidebar.button("データを更新")
+
+# Main Area
+col1, col2 = st.columns([2, 1]) # Adjust column ratios as needed
+
+with col1:
+    st.header("産地情報")
+    st.subheader("産地別・海況マトリックス")
+
+    # Create a DataFrame to hold marine data for the matrix
+    marine_matrix_data = []
+    marine_locations = {name: data for name, data in LOCATIONS.items() if data["type"] == "marine"}
+
+    dates = [(datetime.now() + timedelta(days=i)).date() for i in range(3)]
+    date_cols = [date.strftime('%m/%d') for date in dates]
+
+    for loc_name, loc_data in marine_locations.items():
+        marine_data = get_marine_data(loc_data["lat"], loc_data["lon"])
+
+        if marine_data and 'hourly' in marine_data:
+            row_data = {"拠点": loc_name}
+            for i, date in enumerate(dates):
+                # Get average wave height for the day
+                # Assuming hourly data starts from today 00:00.
+                # Find indices for the current day
+                current_day_hourly_indices = [
+                    j for j, time_str in enumerate(marine_data['hourly']['time'])
+                    if datetime.fromisoformat(time_str).date() == date
+                ]
+                
+                daily_wave_heights = [
+                    marine_data['hourly']['wave_height'][j] for j in current_day_hourly_indices
+                    if marine_data['hourly']['wave_height'][j] is not None
+                ]
+                
+                if daily_wave_heights:
+                    avg_wave_height = np.mean(daily_wave_heights)
+                    status, color = get_wave_status(avg_wave_height)
+                    spring_tide_status = is_spring_tide(date)
+                    row_data[date_cols[i]] = f":{color}[{status} ({avg_wave_height:.1f}m)] ({spring_tide_status})"
+                else:
+                    row_data[date_cols[i]] = "データなし"
+            marine_matrix_data.append(row_data)
+        else:
+            row_data = {"拠点": loc_name}
+            for date_col in date_cols:
+                row_data[date_col] = "APIエラー"
+            marine_matrix_data.append(row_data)
+
+    marine_df = pd.DataFrame(marine_matrix_data)
+    if not marine_df.empty:
+        marine_df.set_index("拠点", inplace=True)
+    st.table(marine_df)
+
+with col2:
+    st.header("東京マーケット")
+    tokyo_location = LOCATIONS["東京"]
+    tokyo_weather_data = get_weather_data(tokyo_location["lat"], tokyo_location["lon"])
+
+    if tokyo_weather_data:
+        st.subheader("需要予測")
+        demand_prediction_text = get_tokyo_demand_prediction(tokyo_weather_data)
+        st.info(demand_prediction_text)
+
+        st.subheader("東京の天気")
+        daily_tokyo_weather = pd.DataFrame(tokyo_weather_data['daily'])
+        daily_tokyo_weather['time'] = pd.to_datetime(daily_tokyo_weather['time']).dt.strftime('%m/%d')
+        daily_tokyo_weather.set_index('time', inplace=True)
+        st.dataframe(daily_tokyo_weather[['temperature_2m_max', 'precipitation_sum', 'precipitation_probability_max']].head(3).rename(columns={
+            'temperature_2m_max': '最高気温(℃)',
+            'precipitation_sum': '降水量(mm)',
+            'precipitation_probability_max': '降水確率(%)'
+        }))
+    else:
+        st.warning("東京の天気データを取得できませんでした。")
+    
+# JMA forecast map links
+st.markdown("---")
+st.subheader("気象庁提供情報")
+st.write("[全国波浪予想図](https://www.jma.go.jp/bosai/wave/#area_type=offshore&element=sea&interval=6)")
+st.write("[全国風向・風速予想図](https://www.jma.go.jp/bosai/wind/#element=wind)")
