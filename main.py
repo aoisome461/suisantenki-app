@@ -16,6 +16,7 @@ LOCATIONS = {
     "香川多度津": {"lat": 34.27, "lon": 133.75, "type": "marine"},
     "徳島": {"lat": 34.00, "lon": 134.70, "type": "marine"},
     "福岡博多": {"lat": 33.60, "lon": 130.40, "type": "marine"},
+    "東京港": {"lat": 35.689488, "lon": 139.691706, "type": "marine"},
     "東京": {"lat": 35.66, "lon": 139.79, "type": "weather"},
 }
 
@@ -44,7 +45,7 @@ def get_marine_data(lat, lon, days=3):
 def get_weather_data(lat, lon, days=4): # Changed to 4 days to get yesterday's data relative to today
     """Fetch weather data (temperature, precipitation, wind_speed, and daily aggregates) from Open-Meteo Forecast API."""
     end_date = (datetime.now() + timedelta(days=days-1)).strftime('%Y-%m-%d') # Adjust end_date to reflect forecast_days
-    url = f"https://api.open-meteo.com/v1/forecast?latitude={lat}&longitude={lon}&hourly=temperature_2m,precipitation,wind_speed_10m&daily=temperature_2m_max,temperature_2m_min,precipitation_sum,precipitation_probability_max&forecast_days={days}&timezone=Asia%2FTokyo"
+    url = f"https://api.open-meteo.com/v1/forecast?latitude={lat}&longitude={lon}&hourly=temperature_2m,precipitation,wind_speed_10m&daily=temperature_2m_max,temperature_2m_min,precipitation_sum,precipitation_probability_max&forecast_days={days}&timezone=Asia%2FTokyo&wind_speed_unit=ms"
     try:
         response = requests.get(url)
         response.raise_for_status()  # Raise HTTPError for bad responses (4xx or 5xx)
