@@ -3,6 +3,7 @@ import requests
 import pandas as pd
 from datetime import datetime, timedelta
 import numpy as np
+import streamlit.components.v1 as components
 
 # 1. モニタリング拠点 (11箇所)
 LOCATIONS = {
@@ -293,5 +294,20 @@ with col2:
 # JMA forecast map links
 st.markdown("---")
 st.subheader("気象庁提供情報")
-st.write("[全国波浪予想図](https://www.jma.go.jp/bosai/wave/#area_type=offshore&element=sea&interval=6)")
+st.write("[全国波浪予想図](https://www.jma.go.jp/bosai/wave/#area_type=offshore)")
 st.write("[全国風向・風速予想図](https://www.jma.go.jp/bosai/wind/#element=wind)")
+
+# Add Streamlit Components for Windy.com
+import streamlit.components.v1 as components
+st.subheader("Windy.com (風と波)")
+components.html(
+    """
+    <iframe
+        width="100%"
+        height="600px"
+        src="https://embed.windy.com/embed2.html?lat=35.6895&lon=139.6917&zoom=6&overlay=waves&product=ecmwf&level=surface&menu=&message=&marker=&calendar=now&pressure=&type=map&location=coordinates&detail=&metricWind=default&metricTemp=default&radarRange=-1"
+        frameborder="0"
+    ></iframe>
+    """,
+    height=600,
+)
