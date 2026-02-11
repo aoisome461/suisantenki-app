@@ -205,6 +205,30 @@ with col1:
         marine_df.set_index("拠点", inplace=True)
     st.table(marine_df)
 
+    # 詳細グラフ (Selected Location Detailed Graphs)
+    st.subheader(f"{selected_location} の詳細グラフ")
+    selected_loc_data = LOCATIONS[selected_location]
+    selected_marine_data = get_marine_data(selected_loc_data["lat"], selected_loc_data["lon"], days=3)
+
+    if selected_marine_data and 'hourly' in selected_marine_data:
+        hourly_data = pd.DataFrame({
+            'time': pd.to_datetime(selected_marine_data['hourly']['time']),
+            'wave_height': selected_marine_data['hourly']['wave_height'],
+            'wind_speed_10m': selected_marine_data['hourly']['wind_speed_10m']
+        })
+        hourly_data.set_index('time', inplace=True)
+
+        # Filter for the next 3 days (assuming 'days=3' in get_marine_data already provides this)
+        # However, to be explicit, let's ensure we only take the relevant forecast period
+        forecast_end_time = datetime.now() + timedelta(days=3)
+        hourly_data = hourly_data[hourly_data.index <= forecast_end_time]
+
+
+        st.line_chart(hourly_data['wave_height'].rename("波の高さ(m)"))
+        st.line_chart(hourly_data['wind_speed_10m'].rename("風速(m/s)"))
+    else:
+        st.warning(f"{selected_location} の詳細グラフデータを取得できませんでした。")
+
 with col2:
     st.header("東京マーケット")
     tokyo_location = LOCATIONS["東京"]
@@ -291,14 +315,12 @@ with col2:
     else:
         st.warning("東京の天気データを取得できませんでした。")
     
-# JMA forecast map links
 st.markdown("---")
 st.subheader("気象庁提供情報")
-st.write("[全国波浪予想図](https://www.jma.go.jp/bosai/wave/#area_type=offshore)")
-st.write("[全国風向・風速予想図](https://www.jma.go.jp/bosai/wind/#element=wind)")
+st.write("[全国波浪予想図](https://www.jma.go.jp/bosai/wave/)")
+st.write("[全国風向・風速予想図](https://www.jma.go.jp/bosai/wind/)")
 
 # Add Streamlit Components for Windy.com
-import streamlit.components.v1 as components
 st.subheader("Windy.com (風と波)")
 components.html(
     """
