@@ -44,7 +44,7 @@ def get_marine_data(lat, lon, days=3):
 def get_weather_data(lat, lon, days=4): # Changed to 4 days to get yesterday's data relative to today
     """Fetch weather data (temperature, precipitation, wind_speed, and daily aggregates) from Open-Meteo Forecast API."""
     end_date = (datetime.now() + timedelta(days=days-1)).strftime('%Y-%m-%d') # Adjust end_date to reflect forecast_days
-    url = f"https://api.open-meteo.com/v1/forecast?latitude={lat}&longitude={lon}&hourly=temperature_2m,precipitation,wind_speed_10m&daily=temperature_2m_max,precipitation_sum,precipitation_probability_max&forecast_days={days}&timezone=Asia%2FTokyo"
+    url = f"https://api.open-meteo.com/v1/forecast?latitude={lat}&longitude={lon}&hourly=temperature_2m,precipitation,wind_speed_10m&daily=temperature_2m_max,temperature_2m_min,precipitation_sum,precipitation_probability_max&forecast_days={days}&timezone=Asia%2FTokyo"
     try:
         response = requests.get(url)
         response.raise_for_status()  # Raise HTTPError for bad responses (4xx or 5xx)
@@ -217,11 +217,75 @@ with col2:
         daily_tokyo_weather = pd.DataFrame(tokyo_weather_data['daily'])
         daily_tokyo_weather['time'] = pd.to_datetime(daily_tokyo_weather['time']).dt.strftime('%m/%d')
         daily_tokyo_weather.set_index('time', inplace=True)
-        st.dataframe(daily_tokyo_weather[['temperature_2m_max', 'precipitation_sum', 'precipitation_probability_max']].head(3).rename(columns={
+        st.dataframe(daily_tokyo_weather[['temperature_2m_max', 'temperature_2m_min', 'precipitation_sum', 'precipitation_probability_max']].head(3).rename(columns={
             'temperature_2m_max': '最高気温(℃)',
+            'temperature_2m_min': '最低気温(℃)',
             'precipitation_sum': '降水量(mm)',
             'precipitation_probability_max': '降水確率(%)'
         }))
+
+        # Add advice if minimum temperature is below 5 degrees for today
+        if not daily_tokyo_weather.empty:
+            today_min_temp = daily_tokyo_weather.iloc[0]['temperature_2m_min']
+            if today_min_temp < 5:
+                st.warning("冷え込み注意：温かいメニューの提案を強化")
+
+        hourly_tokyo_wind = pd.DataFrame(tokyo_weather_data['hourly'])
+        hourly_tokyo_wind['time'] = pd.to_datetime(hourly_tokyo_wind['time'])
+        st.dataframe(hourly_tokyo_wind[['time', 'wind_speed_10m']].rename(columns={
+            'time': '時間',
+            'wind_speed_10m': '風速(m/s)'
+        }).head(24)) # Displaying only the first 24 hours for brevity
+
+
+        # Wind speed advice logic
+        wind_advice_messages = []
+        forecast_days_count = len(tokyo_weather_data['daily']['time'])
+        
+        for i in range(forecast_days_count):
+            current_date_str = tokyo_weather_data['daily']['time'][i]
+            current_date = datetime.fromisoformat(current_date_str).date()
+            
+            # Filter hourly data for the current day
+            daily_hourly_wind = hourly_tokyo_wind[hourly_tokyo_wind['time'].dt.date == current_date]
+            
+            if not daily_hourly_wind.empty:
+                max_wind_speed_day = daily_hourly_wind['wind_speed_10m'].max()
+                
+                # For >= 3m/s, show specific time ranges
+                if max_wind_speed_day >= 3:
+                    wind_3m_times = daily_hourly_wind[daily_hourly_wind['wind_speed_10m'] >= 3]['time'].dt.strftime('%H:%M').tolist()
+                    if wind_3m_times:
+                        time_ranges = []
+                        if len(wind_3m_times) > 1:
+                            start_time = None
+                            end_time = None
+                            for k in range(len(wind_3m_times)):
+                                current_hour = int(wind_3m_times[k].split(':')[0])
+                                if start_time is None:
+                                    start_time = current_hour
+                                    end_time = current_hour
+                                elif current_hour == end_time + 1:
+                                    end_time = current_hour
+                                else:
+                                    time_ranges.append(f"{start_time:02d}:00-{end_time:02d}:00")
+                                    start_time = current_hour
+                                    end_time = current_hour
+                            time_ranges.append(f"{start_time:02d}:00-{end_time:02d}:00")
+                        else:
+                            time_ranges.append(f"{int(wind_3m_times[0].split(':')[0]):02d}:00")
+
+                        time_range_str = ", ".join(time_ranges)
+                        wind_advice_messages.append(f"• {current_date.strftime('%m/%d')} : 軽いものが飛ぶ可能性あり ({time_range_str}頃)")
+                        
+                # For >= 5m/s and >= 10m/s, add general warnings for the day
+                if max_wind_speed_day >= 10:
+                    wind_advice_messages.append(f"• {current_date.strftime('%m/%d')} : 強風注意報の可能性あり")
+                elif max_wind_speed_day >= 5:
+                    wind_advice_messages.append(f"• {current_date.strftime('%m/%d')} : 強風注意")
+
+        if wind_advice_messages:
+            st.warning("  \n".join(wind_advice_messages))
     else:
         st.warning("東京の天気データを取得できませんでした。")
     
