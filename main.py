@@ -33,7 +33,8 @@ def fetch_api_data(url):
         r = requests.get(url, timeout=12)
         r.raise_for_status()
         return r.json()
-    except: return None
+    except Exception as e:
+        return None
 
 def get_weather_desc(code):
     mapping = {0: "☀️ 快晴", 1: "🌤️ 晴", 2: "⛅ 曇晴", 3: "☁️ 曇", 45: "🌫️ 霧", 51: "🌦️ 霧雨", 61: "☔ 小雨", 63: "☔ 雨", 80: "🌧️ 俄雨"}
@@ -56,7 +57,6 @@ def get_tide_char(moon_age):
     elif ma in [6, 7, 8, 9, 20, 21, 22, 23]: return "小"
     else: return "長"
 
-# --- 日本時間の取得 (クラウド環境対応) ---
 def get_jst_now():
     return datetime.utcnow() + timedelta(hours=9)
 
@@ -73,7 +73,6 @@ with tab1: components.html(f'<iframe src="{windy_url("wind")}" {windy_style}></i
 with tab2: components.html(f'<iframe src="{windy_url("waves")}" {windy_style}></iframe>', height=380)
 with tab3: components.html(f'<iframe src="{windy_url("sst")}" {windy_style}></iframe>', height=380)
 
-# 天気図へのリンクボタン
 st.link_button("🗺️ tenki.jp で実況天気図・前線を確認する", "https://tenki.jp/guide/chart/", use_container_width=True)
 
 st.markdown("---")
@@ -84,25 +83,20 @@ tokyo_url = f"https://api.open-meteo.com/v1/forecast?latitude=35.66&longitude=13
 tokyo_data = fetch_api_data(tokyo_url)
 
 if tokyo_data:
-    # 🌟 ここで必ず「日本時間」を基準にする
     now_dt = get_jst_now()
     idx_now = find_nearest_idx(tokyo_data['hourly']['time'], now_dt)
     
-    # 現場アラート (重要：強風・低温)
     wind_now = tokyo_data['hourly']['wind_speed_10m'][idx_now]
     temp_min_today = tokyo_data['daily']['temperature_2m_min'][0]
     
-    # 強風警告ロジック
     if wind_now >= 10:
         st.error(f"🌪️ **強風警告：{wind_now:.1f}m/s** 発泡が飛散し非常に危険です！荷役を中止してください。")
     elif wind_now >= 5:
         st.warning(f"🍃 **風注意：{wind_now:.1f}m/s** 発泡スチロールが飛び始めます。固定を確認してください。")
     
-    # 低温・鍋需要
     if temp_min_today <= 12:
         st.info(f"🍲 **需要予測：低温（{temp_min_today:.1f}℃）** 鍋物用商材（白身魚・貝類）の引きが強まります。")
 
-    # 週間天気
     st.write("📅 **東京 週間天気**")
     df_week = pd.DataFrame({
         "日付": [d[5:] for d in tokyo_data['daily']['time']],
@@ -110,17 +104,17 @@ if tokyo_data:
         "最高": tokyo_data['daily']['temperature_2m_max'],
         "最低": tokyo_data['daily']['temperature_2m_min']
     }).set_index("日付")
-    st.dataframe(df_week.T, width="stretch")
+    # ✅ width="stretch" のエラーを修正
+    st.dataframe(df_week.T, use_container_width=True)
 
-    # 風速予測
     st.write("🍃 **東京市場出荷現場 風速予測 (m/s)**")
     wind_h = pd.DataFrame({
         "時間": [t[11:16] for t in tokyo_data['hourly']['time']],
         "風速": tokyo_data['hourly']['wind_speed_10m']
     }).iloc[idx_now:idx_now+12].set_index("時間")
-    st.dataframe(wind_h.T, width="stretch")
+    # ✅ width="stretch" のエラーを修正
+    st.dataframe(wind_h.T, use_container_width=True)
 
-    # 降水グラフ
     st.write("☔ **降水予報推移 (mm)**")
     rain_slice = pd.DataFrame({"t": pd.to_datetime(tokyo_data['hourly']['time']), "v": tokyo_data['hourly']['precipitation']}).iloc[idx_now:idx_now+15]
     fig_r, ax_r = plt.subplots(figsize=(8, 2.5))
@@ -130,6 +124,9 @@ if tokyo_data:
     plt.grid(axis='y', linestyle='--', alpha=0.5)
     st.pyplot(fig_r)
     plt.close()
+else:
+    # ✅ もしデータが取れなかったら真っ白になるのではなく、理由を表示する
+    st.error("⚠️ 現在、気象データの取得に失敗しています。APIの制限や通信エラーの可能性があります。少し時間をおいてからリロードしてください。")
 
 st.markdown("---")
 
@@ -157,7 +154,6 @@ with st.spinner('漁場データ更新中...'):
             if m_data: wv = m_data['hourly']['wave_height'][find_nearest_idx(m_data['hourly']['time'], target_dt)] or 0.0
             if w_data: wd = w_data['hourly']['wind_speed_10m'][find_nearest_idx(w_data['hourly']['time'], target_dt)] or 0.0
             
-            # 状態判定
             status = "🟢凪"
             if wv >= 2.5 or wd >= 10: status = "🔴時化"
             elif wv >= 1.5 or wd >= 7: status = "🟡注意"
@@ -167,13 +163,19 @@ with st.spinner('漁場データ更新中...'):
 
 if matrix_list:
     df_matrix = pd.DataFrame(matrix_list).set_index("拠点")
-    # 色分けを確実に反映
     def style_status(val):
         if '🔴' in str(val): return 'color: red; font-weight: bold;'
         if '🟡' in str(val): return 'color: orange;'
         if '🟢' in str(val): return 'color: blue;'
         return ''
-    st.dataframe(df_matrix.style.applymap(style_status), width="stretch")
+    
+    # ✅ クラウド上のPandasのバージョン違いによるエラーを回避
+    try:
+        styled_df = df_matrix.style.map(style_status)
+    except AttributeError:
+        styled_df = df_matrix.style.applymap(style_status)
+        
+    st.dataframe(styled_df, use_container_width=True)
 
 st.markdown("---")
 
