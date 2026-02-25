@@ -76,7 +76,7 @@ st.markdown("---")
 
 
 # [B] 東京情報 & 現場アラート
-st.subheader("🗼 東京需要 & 出荷現場")
+st.subheader("🗼 東京需要 & 東京市場出荷現場")
 tokyo_url = f"https://api.open-meteo.com/v1/forecast?latitude=35.66&longitude=139.79&hourly=temperature_2m,wind_speed_10m,precipitation&daily=weather_code,temperature_2m_max,temperature_2m_min,precipitation_probability_max&forecast_days=3&timezone=Asia%2FTokyo&wind_speed_unit=ms"
 tokyo_data = fetch_api_data(tokyo_url)
 
@@ -109,7 +109,7 @@ if tokyo_data:
     st.dataframe(df_week.T, width="stretch")
 
     # 風速予測
-    st.write("🍃 **出荷現場 風速予測 (m/s)**")
+    st.write("🍃 **東京市場出荷現場 風速予測 (m/s)**")
     wind_h = pd.DataFrame({
         "時間": [t[11:16] for t in tokyo_data['hourly']['time']],
         "風速": tokyo_data['hourly']['wind_speed_10m']
