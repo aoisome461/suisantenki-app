@@ -56,6 +56,10 @@ def get_tide_char(moon_age):
     elif ma in [6, 7, 8, 9, 20, 21, 22, 23]: return "小"
     else: return "長"
 
+# --- 日本時間の取得 (クラウド環境対応) ---
+def get_jst_now():
+    return datetime.utcnow() + timedelta(hours=9)
+
 # --- 4. メイン画面 ---
 st.title("🌊 UMI-MIRU: 水産お天気ダッシュボード")
 
@@ -80,7 +84,8 @@ tokyo_url = f"https://api.open-meteo.com/v1/forecast?latitude=35.66&longitude=13
 tokyo_data = fetch_api_data(tokyo_url)
 
 if tokyo_data:
-    now_dt = datetime.now()
+    # 🌟 ここで必ず「日本時間」を基準にする
+    now_dt = get_jst_now()
     idx_now = find_nearest_idx(tokyo_data['hourly']['time'], now_dt)
     
     # 現場アラート (重要：強風・低温)
@@ -130,14 +135,15 @@ st.markdown("---")
 
 # [C] 全国海況予報 (北→南)
 st.subheader("📊 全国海況予報 (北→南)")
-m_age = calculate_moon_age(datetime.now().date())
+today_jst = get_jst_now().date()
+m_age = calculate_moon_age(today_jst)
 st.write(f"🌙 **本日の月齢: {m_age} ({get_tide_char(m_age)}潮)**")
 
 marine_keys = [k for k, v in LOCATIONS.items() if v["type"] == "marine"]
 marine_keys.sort(key=lambda x: LOCATIONS[x]["lat"], reverse=True)
 
 matrix_list = []
-dates = [datetime.now().date() + timedelta(days=i) for i in range(3)]
+dates = [today_jst + timedelta(days=i) for i in range(3)]
 
 with st.spinner('漁場データ更新中...'):
     for name in marine_keys:
