@@ -57,10 +57,9 @@ def get_tide_char(moon_age):
     else: return "長"
 
 # --- 4. メイン画面 ---
-st.title("🌊 UMI-MIRU")
-st.caption("〜 水産お天気ダッシュボード 〜")
+st.title("🌊 UMI-MIRU: 水産お天気ダッシュボード")
 
-# [A] WINDY (広域マップ)
+# [A] WINDY
 st.subheader("🌍 広域マップ")
 tab1, tab2, tab3 = st.tabs(["🍃 風・気圧", "🌊 波浪", "🌡️ 水温"])
 windy_style = 'style="width: 100%; height: 380px; border-radius: 8px; border: none;"'
@@ -72,7 +71,7 @@ with tab3: components.html(f'<iframe src="{windy_url("sst")}" {windy_style}></if
 
 st.markdown("---")
 
-# [B] 東京需要 & 出荷現場予報
+# [B] 東京情報 & 現場アラート
 st.subheader("🗼 東京需要 & 出荷現場")
 tokyo_url = f"https://api.open-meteo.com/v1/forecast?latitude=35.66&longitude=139.79&hourly=temperature_2m,wind_speed_10m,precipitation&daily=weather_code,temperature_2m_max,temperature_2m_min,precipitation_probability_max&forecast_days=3&timezone=Asia%2FTokyo&wind_speed_unit=ms"
 tokyo_data = fetch_api_data(tokyo_url)
@@ -81,25 +80,21 @@ if tokyo_data:
     now_dt = datetime.now()
     idx_now = find_nearest_idx(tokyo_data['hourly']['time'], now_dt)
     
-    # 1. 重要コメント (需要予測・強風警告)
-    temp_min_today = tokyo_data['daily']['temperature_2m_min'][0]
+    # 現場アラート (重要：強風・低温)
     wind_now = tokyo_data['hourly']['wind_speed_10m'][idx_now]
-    precip_p = tokyo_data['daily']['precipitation_probability_max'][0]
-
-    # 低温・鍋需要コメント
-    if temp_min_today <= 12:
-        st.info(f"🍲 **【需要予測】低温（{temp_min_today:.1f}℃）: 鍋物用商材（白身魚・貝類）の動きが良くなりそうです。**")
+    temp_min_today = tokyo_data['daily']['temperature_2m_min'][0]
     
-    # 強風警告
+    # 強風警告ロジック
     if wind_now >= 10:
-        st.error(f"🌪️ **強風警告：{wind_now:.1f}m/s** 発泡が飛散します！作業は極めて危険です。")
+        st.error(f"🌪️ **強風警告：{wind_now:.1f}m/s** 発泡が飛散し非常に危険です！荷役を中止してください。")
     elif wind_now >= 5:
-        st.warning(f"🍃 **風注意：{wind_now:.1f}m/s** 発泡スチロールの飛散注意。固定を確認。")
+        st.warning(f"🍃 **風注意：{wind_now:.1f}m/s** 発泡スチロールが飛び始めます。固定を確認してください。")
     
-    if precip_p >= 50:
-        st.warning(f"☔ **客足注意：降水確率 {precip_p}%** 実店舗の客数減少に備えてください。")
+    # 低温・鍋需要
+    if temp_min_today <= 12:
+        st.info(f"🍲 **需要予測：低温（{temp_min_today:.1f}℃）** 鍋物用商材（白身魚・貝類）の引きが強まります。")
 
-    # 2. 週間天気
+    # 週間天気
     st.write("📅 **東京 週間天気**")
     df_week = pd.DataFrame({
         "日付": [d[5:] for d in tokyo_data['daily']['time']],
@@ -109,7 +104,7 @@ if tokyo_data:
     }).set_index("日付")
     st.dataframe(df_week.T, width="stretch")
 
-    # 3. 風速予測リスト
+    # 風速予測
     st.write("🍃 **出荷現場 風速予測 (m/s)**")
     wind_h = pd.DataFrame({
         "時間": [t[11:16] for t in tokyo_data['hourly']['time']],
@@ -117,8 +112,8 @@ if tokyo_data:
     }).iloc[idx_now:idx_now+12].set_index("時間")
     st.dataframe(wind_h.T, width="stretch")
 
-    # 4. 降水グラフ (静止画)
-    st.write("☔ **降水推移 (mm) ※静止画像**")
+    # 降水グラフ
+    st.write("☔ **降水予報推移 (mm)**")
     rain_slice = pd.DataFrame({"t": pd.to_datetime(tokyo_data['hourly']['time']), "v": tokyo_data['hourly']['precipitation']}).iloc[idx_now:idx_now+15]
     fig_r, ax_r = plt.subplots(figsize=(8, 2.5))
     ax_r.bar(rain_slice['t'], rain_slice['v'], color='#1f77b4', width=0.03)
@@ -132,18 +127,14 @@ st.markdown("---")
 
 # [C] 全国海況予報 (北→南)
 st.subheader("📊 全国海況予報 (北→南)")
-
-# ここに月齢と潮回りを表示
-today_date = datetime.now().date()
-m_age = calculate_moon_age(today_date)
-t_char = get_tide_char(m_age)
-st.write(f"🌙 **本日の月齢: {m_age} ({t_char}潮)**")
+m_age = calculate_moon_age(datetime.now().date())
+st.write(f"🌙 **本日の月齢: {m_age} ({get_tide_char(m_age)}潮)**")
 
 marine_keys = [k for k, v in LOCATIONS.items() if v["type"] == "marine"]
 marine_keys.sort(key=lambda x: LOCATIONS[x]["lat"], reverse=True)
 
 matrix_list = []
-dates = [today_date + timedelta(days=i) for i in range(3)]
+dates = [datetime.now().date() + timedelta(days=i) for i in range(3)]
 
 with st.spinner('漁場データ更新中...'):
     for name in marine_keys:
@@ -156,20 +147,29 @@ with st.spinner('漁場データ更新中...'):
             wv, wd = 0.0, 0.0
             if m_data: wv = m_data['hourly']['wave_height'][find_nearest_idx(m_data['hourly']['time'], target_dt)] or 0.0
             if w_data: wd = w_data['hourly']['wind_speed_10m'][find_nearest_idx(w_data['hourly']['time'], target_dt)] or 0.0
-            icon = "🟢"
-            if wv >= 2.5 or wd >= 10: icon = "🔴"
-            elif wv >= 1.5 or wd >= 7: icon = "🟡"
-            row[d.strftime('%m/%d')] = f"{icon}{wv:.1f}/{wd:.0f}({get_tide_char(calculate_moon_age(d))})"
+            
+            # 状態判定
+            status = "🟢凪"
+            if wv >= 2.5 or wd >= 10: status = "🔴時化"
+            elif wv >= 1.5 or wd >= 7: status = "🟡注意"
+            
+            row[d.strftime('%m/%d')] = f"{status} {wv:.1f}/{wd:.0f}({get_tide_char(calculate_moon_age(d))})"
         matrix_list.append(row)
 
 if matrix_list:
     df_matrix = pd.DataFrame(matrix_list).set_index("拠点")
-    st.dataframe(df_matrix.style.map(lambda v: 'color: red; font-weight: bold' if '🔴' in str(v) else 'color: blue' if '🟢' in str(v) else 'color: orange' if '🟡' in str(v) else ''), width="stretch")
+    # 色分けを確実に反映
+    def style_status(val):
+        if '🔴' in str(val): return 'color: red; font-weight: bold;'
+        if '🟡' in str(val): return 'color: orange;'
+        if '🟢' in str(val): return 'color: blue;'
+        return ''
+    st.dataframe(df_matrix.style.applymap(style_status), width="stretch")
 
 st.markdown("---")
 
-# [D] 拠点詳細 (静止画)
-st.subheader("📈 拠点詳細推移 像")
+# [D] 拠点詳細
+st.subheader("📈 拠点詳細推移")
 selected_port = st.selectbox("詳しく見る拠点を選択", marine_keys, index=marine_keys.index("千葉 勝浦"))
 
 p_lat, p_lon = LOCATIONS[selected_port]["lat"], LOCATIONS[selected_port]["lon"]
