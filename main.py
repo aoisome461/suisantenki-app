@@ -58,6 +58,7 @@ def get_tide_char(moon_age):
 
 # --- 4. メイン画面 ---
 st.title("🌊 UMI-MIRU")
+st.caption("〜 水産お天気ダッシュボード 〜")
 
 # [A] WINDY (広域マップ)
 st.subheader("🌍 広域マップ")
