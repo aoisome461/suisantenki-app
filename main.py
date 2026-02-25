@@ -29,12 +29,10 @@ LOCATIONS = {
 
 @st.cache_data(ttl=1800)
 def fetch_api_data(url):
-    # 🌟 解決策：「普通のブラウザ」のフリをする身分証明証（User-Agent）を追加
     headers = {
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36"
     }
     try:
-        # headersを持たせて、少しだけ待つ時間を長く（15秒）しました
         r = requests.get(url, headers=headers, timeout=15)
         r.raise_for_status()
         return r.json()
@@ -91,17 +89,38 @@ if tokyo_data:
     now_dt = get_jst_now()
     idx_now = find_nearest_idx(tokyo_data['hourly']['time'], now_dt)
     
-    wind_now = tokyo_data['hourly']['wind_speed_10m'][idx_now]
-    temp_min_today = tokyo_data['daily']['temperature_2m_min'][0]
+    # 向こう12時間の風速データを取得
+    upcoming_times = tokyo_data['hourly']['time'][idx_now:idx_now+12]
+    upcoming_winds = tokyo_data['hourly']['wind_speed_10m'][idx_now:idx_now+12]
     
-    if wind_now >= 10:
-        st.error(f"🌪️ **強風警告：{wind_now:.1f}m/s** 発泡が飛散し非常に危険です！荷役を中止してください。")
-    elif wind_now >= 5:
-        st.warning(f"🍃 **風注意：{wind_now:.1f}m/s** 発泡スチロールが飛び始めます。固定を確認してください。")
+    # 危険な風速になる「最初の時間」を探す
+    danger_times = [t[11:16] for t, w in zip(upcoming_times, upcoming_winds) if w >= 10]
+    warn_times = [t[11:16] for t, w in zip(upcoming_times, upcoming_winds) if 5 <= w < 10]
     
-    if temp_min_today <= 12:
-        st.info(f"🍲 **需要予測：低温（{temp_min_today:.1f}℃）** 鍋物用商材（白身魚・貝類）の引きが強まります。")
+    max_w = max(upcoming_winds) if len(upcoming_winds) > 0 else 0
 
+    # 🌟 1. 発泡飛散・強風先読みアラート
+    if danger_times:
+        st.error(f"🌪️ **【強風予告】最大 {max_w:.1f}m/s**: 本日 **{danger_times[0]} 頃から** 発泡が飛散する暴風になります！事前の片付けと荷役の安全確保を！")
+    elif warn_times:
+        st.warning(f"🍃 **【風注意】最大 {max_w:.1f}m/s**: 本日 **{warn_times[0]} 頃から** 風が強まり、発泡スチロールが飛びやすくなります。")
+    else:
+        st.success("✅ 向こう12時間は風が穏やかで、荷役作業に支障はなさそうです。")
+
+    # 本日の気温・降水データ
+    temp_min_today = tokyo_data['daily']['temperature_2m_min'][0]
+    temp_max_today = tokyo_data['daily']['temperature_2m_max'][0]
+    precip_p = tokyo_data['daily']['precipitation_probability_max'][0]
+    
+    # 🌟 2. 客足・需要予測アラート
+    if temp_min_today <= 12:
+        st.info(f"🍲 **【需要UP】低温（最低 {temp_min_today:.1f}℃）**: 鍋物用商材（白身魚・貝類など）の引きが強まる見込みです。")
+    if temp_max_today >= 30:
+        st.warning(f"🥵 **【客足注意】猛暑（最高 {temp_max_today:.1f}℃）**: 危険な暑さにより、量販店・スーパーへの来店客数が落ち込む恐れがあります。")
+    if precip_p >= 50:
+        st.warning(f"☔ **【客足注意】雨天（降水確率 {precip_p}%）**: 雨の影響で量販店の客足が鈍る見込みです。売れ残りにご注意ください。")
+
+    # 週間天気
     st.write("📅 **東京 週間天気**")
     df_week = pd.DataFrame({
         "日付": [d[5:] for d in tokyo_data['daily']['time']],
@@ -111,6 +130,7 @@ if tokyo_data:
     }).set_index("日付")
     st.dataframe(df_week.T, use_container_width=True)
 
+    # 風速予測
     st.write("🍃 **東京市場出荷現場 風速予測 (m/s)**")
     wind_h = pd.DataFrame({
         "時間": [t[11:16] for t in tokyo_data['hourly']['time']],
@@ -118,6 +138,7 @@ if tokyo_data:
     }).iloc[idx_now:idx_now+12].set_index("時間")
     st.dataframe(wind_h.T, use_container_width=True)
 
+    # 降水グラフ
     st.write("☔ **降水予報推移 (mm)**")
     rain_slice = pd.DataFrame({"t": pd.to_datetime(tokyo_data['hourly']['time']), "v": tokyo_data['hourly']['precipitation']}).iloc[idx_now:idx_now+15]
     fig_r, ax_r = plt.subplots(figsize=(8, 2.5))
