@@ -69,11 +69,10 @@ with tab1: components.html(f'<iframe src="{windy_url("wind")}" {windy_style}></i
 with tab2: components.html(f'<iframe src="{windy_url("waves")}" {windy_style}></iframe>', height=380)
 with tab3: components.html(f'<iframe src="{windy_url("sst")}" {windy_style}></iframe>', height=380)
 
-# 💡 ここに天気図へのリンクボタンを追加（use_container_width=True でスマホの横幅いっぱいのボタンになります）
+# 天気図へのリンクボタン
 st.link_button("🗺️ tenki.jp で実況天気図・前線を確認する", "https://tenki.jp/guide/chart/", use_container_width=True)
 
 st.markdown("---")
-
 
 # [B] 東京情報 & 現場アラート
 st.subheader("🗼 東京需要 & 東京市場出荷現場")
