@@ -76,13 +76,17 @@ with tab1: components.html(f'<iframe src="{windy_url("wind")}" {windy_style}></i
 with tab2: components.html(f'<iframe src="{windy_url("waves")}" {windy_style}></iframe>', height=380)
 with tab3: components.html(f'<iframe src="{windy_url("sst")}" {windy_style}></iframe>', height=380)
 
-st.link_button("🗺️ tenki.jp で実況天気図・前線を確認する", "https://tenki.jp/guide/chart/", use_container_width=True)
+col1, col2 = st.columns(2)
+with col1:
+    st.link_button("🗺️ tenki.jp (実況・今日明日の天気図)", "https://tenki.jp/guide/chart/", use_container_width=True)
+with col2:
+    st.link_button("📅 Bioweather (週間予報天気図一覧)", "https://bioweather.net/chart/pressure.htm?menu=week", use_container_width=True)
 
 st.markdown("---")
 
 # [B] 東京情報 & 現場アラート
 st.subheader("🗼 東京需要 & 東京市場出荷現場")
-tokyo_url = f"https://api.open-meteo.com/v1/forecast?latitude=35.66&longitude=139.79&hourly=temperature_2m,wind_speed_10m,precipitation&daily=weather_code,temperature_2m_max,temperature_2m_min,precipitation_probability_max&forecast_days=3&timezone=Asia%2FTokyo&wind_speed_unit=ms"
+tokyo_url = f"https://api.open-meteo.com/v1/forecast?latitude=35.66&longitude=139.79&hourly=temperature_2m,wind_speed_10m,precipitation&daily=weather_code,temperature_2m_max,temperature_2m_min,precipitation_probability_max&forecast_days=7&timezone=Asia%2FTokyo&wind_speed_unit=ms"
 tokyo_data = fetch_api_data(tokyo_url)
 
 if tokyo_data:
@@ -141,6 +145,10 @@ if tokyo_data:
     # 降水グラフ
     st.write("☔ **降水予報推移 (mm)**")
     rain_slice = pd.DataFrame({"t": pd.to_datetime(tokyo_data['hourly']['time']), "v": tokyo_data['hourly']['precipitation']}).iloc[idx_now:idx_now+15]
+    
+    if rain_slice['v'].sum() == 0:
+        st.write("✅ しばらく雨は降りません。")
+    
     fig_r, ax_r = plt.subplots(figsize=(8, 2.5))
     ax_r.bar(rain_slice['t'], rain_slice['v'], color='#1f77b4', width=0.03)
     ax_r.xaxis.set_major_formatter(mdates.DateFormatter('%H:%M'))
