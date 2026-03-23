@@ -81,7 +81,8 @@ with col1:
     st.link_button("🗺️ tenki.jp (実況・今日明日の天気図)", "https://tenki.jp/guide/chart/", use_container_width=True)
 with col2:
     st.link_button("📅 Bioweather (週間予報天気図一覧)", "https://bioweather.net/chart/pressure.htm?menu=week", use_container_width=True)
-
+# ☔ 雨雲レーダーを追加（現場で押しやすいように1行で大きく配置）
+st.link_button("☔ 雨雲レーダー (気象庁ナウキャスト)", "https://www.jma.go.jp/bosai/nowc/", use_container_width=True)
 st.markdown("---")
 
 # [B] 東京情報 & 現場アラート
