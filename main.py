@@ -22,7 +22,7 @@ LOCATIONS = {
     "東京 品川": {"lat": 35.61, "lon": 139.78, "type": "marine"},
     "徳島 鳴門": {"lat": 34.23, "lon": 134.64, "type": "marine"},
     "福岡 博多": {"lat": 33.60, "lon": 130.40, "type": "marine"},
-    "東京": {"lat": 35.66, "lon": 139.79, "type": "weather"},
+    "東京": {"lat": 35.69, "lon": 139.75, "type": "weather"},
 }
 
 # --- 3. 関数定義 ---
@@ -87,7 +87,9 @@ st.markdown("---")
 
 # [B] 東京情報 & 現場アラート
 st.subheader("🗼 東京需要 & 東京市場出荷現場")
-tokyo_url = f"https://api.open-meteo.com/v1/forecast?latitude=35.66&longitude=139.79&hourly=temperature_2m,wind_speed_10m,precipitation&daily=weather_code,temperature_2m_max,temperature_2m_min,precipitation_probability_max&forecast_days=7&timezone=Asia%2FTokyo&wind_speed_unit=ms"
+tokyo_lat = LOCATIONS["東京"]["lat"]
+tokyo_lon = LOCATIONS["東京"]["lon"]
+tokyo_url = f"https://api.open-meteo.com/v1/forecast?latitude={tokyo_lat}&longitude={tokyo_lon}&hourly=temperature_2m,wind_speed_10m,precipitation&daily=weather_code,temperature_2m_max,temperature_2m_min,precipitation_probability_max&forecast_days=7&timezone=Asia%2FTokyo&wind_speed_unit=ms"
 tokyo_data = fetch_api_data(tokyo_url)
 
 if tokyo_data:
